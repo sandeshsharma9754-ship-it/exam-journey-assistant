@@ -39,13 +39,13 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-  allow_origins=[
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:5174",
-    "http://127.0.0.1:5174",
-],
-    
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+        "https://exam-journey-assistant-l2x8.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -71,7 +71,7 @@ class JourneyRequest(BaseModel):
 
     exam_date: str
 
-    reporting_time: str
+    reportiang_time: str
 
     gate_closing_time: str
 
