@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import "./App.css";
 
-const API_BASE = "https://exam-journey-assistant-1.onrender.com";
+const API_BASE = "https://exam-journey-assistant-2.onrender.com";
 
 type AnyObject = Record<string, any>;
 type TravelMode = "car" | "bus" | "train";
