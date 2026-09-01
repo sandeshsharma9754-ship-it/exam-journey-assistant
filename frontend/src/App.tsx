@@ -29,6 +29,12 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Delay simulation
+  const [delayMinutes, setDelayMinutes] = useState(0);
+  const [delayResult, setDelayResult] = useState<AnyObject | null>(null);
+  const [delayLoading, setDelayLoading] = useState(false);
+  const [delayError, setDelayError] = useState("");
+
   const [stage, setStage] = useState<JourneyStage>("plan");
   const [showPostArrival, setShowPostArrival] = useState(false);
   const [showExamComplete, setShowExamComplete] = useState(false);
@@ -91,7 +97,9 @@ function App() {
 
     const raw = String(value);
 
-    const date = new Date(raw.includes(" ") ? raw.replace(" ", "T") : raw);
+    const date = new Date(
+      raw.includes(" ") ? raw.replace(" ", "T") : raw
+    );
 
     if (Number.isNaN(date.getTime())) return raw;
 
@@ -145,13 +153,21 @@ function App() {
     return String(detail);
   }
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    event: React.FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
 
     setError("");
     setJourney(null);
     setCentre(null);
     setSupport(null);
+
+    // Reset delay simulation
+    setDelayMinutes(0);
+    setDelayResult(null);
+    setDelayError("");
+
     setStage("plan");
     setShowPostArrival(false);
     setShowExamComplete(false);
@@ -160,28 +176,31 @@ function App() {
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE}/exam/complete-plan`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          starting_location: currentLocation,
-          exam_centre: centreName,
-          exam_date: examDate,
-          reporting_time: reportingTime,
-          gate_closing_time: gateClosingTime,
-          local_travel_minutes: 0,
-          transport_delay_minutes: 0,
-          departure_time: null,
-          centre_name: centreName,
-          centre_address: centreAddress,
-          centre_city: city,
-          centre_latitude: null,
-          centre_longitude: null,
-          admit_card_data: null,
-        }),
-      });
+      const response = await fetch(
+        `${API_BASE}/exam/complete-plan`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            starting_location: currentLocation,
+            exam_centre: centreName,
+            exam_date: examDate,
+            reporting_time: reportingTime,
+            gate_closing_time: gateClosingTime,
+            local_travel_minutes: 0,
+            transport_delay_minutes: 0,
+            departure_time: null,
+            centre_name: centreName,
+            centre_address: centreAddress,
+            centre_city: city,
+            centre_latitude: null,
+            centre_longitude: null,
+            admit_card_data: null,
+          }),
+        }
+      );
 
       const data = await response.json();
 
@@ -190,7 +209,9 @@ function App() {
       }
 
       if (!data.exam_plan) {
-        throw new Error("The server returned an incomplete exam plan.");
+        throw new Error(
+          "The server returned an incomplete exam plan."
+        );
       }
 
       setJourney(data.exam_plan.journey || null);
@@ -199,7 +220,7 @@ function App() {
     } catch (err) {
       if (err instanceof TypeError) {
         setError(
-          "Unable to connect to the backend. Make sure FastAPI is running on port 8000."
+          "Unable to connect to the backend. Please check the online server."
         );
       } else if (err instanceof Error) {
         setError(err.message);
@@ -211,13 +232,71 @@ function App() {
     }
   }
 
+  // ============================================================
+  // DELAY SIMULATION
+  // ============================================================
+
+  async function simulateDelay(minutes: number) {
+    if (!journey?.expected_arrival) {
+      setDelayError(
+        "Expected arrival time is not available."
+      );
+      return;
+    }
+
+    setDelayLoading(true);
+    setDelayError("");
+
+    try {
+      const response = await fetch(
+        `${API_BASE}/journey/simulate-delay`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            expected_arrival: String(
+              journey.expected_arrival
+            ).replace("T", " "),
+            exam_date: examDate,
+            reporting_time: reportingTime,
+            gate_closing_time: gateClosingTime,
+            delay_minutes: minutes,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(getErrorMessage(data));
+      }
+
+      setDelayMinutes(minutes);
+      setDelayResult(data);
+    } catch (err) {
+      if (err instanceof Error) {
+        setDelayError(err.message);
+      } else {
+        setDelayError(
+          "Unable to simulate journey delay."
+        );
+      }
+    } finally {
+      setDelayLoading(false);
+    }
+  }
+
   function captureGPS() {
     setGpsStatus("");
     setGpsLoading(true);
 
     if (!navigator.geolocation) {
       setGpsLoading(false);
-      setGpsStatus("GPS is not supported by this browser.");
+      setGpsStatus(
+        "GPS is not supported by this browser."
+      );
       return;
     }
 
@@ -227,8 +306,12 @@ function App() {
         const lng = position.coords.longitude;
 
         setLastGps({ lat, lng });
-        setCurrentLocation(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-        setGpsStatus("GPS location captured successfully.");
+        setCurrentLocation(
+          `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+        );
+        setGpsStatus(
+          "GPS location captured successfully."
+        );
         setGpsLoading(false);
       },
       () => {
@@ -250,7 +333,9 @@ function App() {
       `${centreName}, ${centreAddress}, ${city}`
     );
 
-    const origin = encodeURIComponent(currentLocation);
+    const origin = encodeURIComponent(
+      currentLocation
+    );
 
     window.open(
       `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}`,
@@ -260,13 +345,19 @@ function App() {
 
   function startJourney() {
     setStage("travel");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
   }
 
   function markReached() {
     setStage("arrive");
     setShowPostArrival(true);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
   }
 
   function openExamStatus() {
@@ -283,7 +374,10 @@ function App() {
   function startReturnJourney() {
     setReturnJourney(true);
     setStage("home");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
   }
 
   function resetAll() {
@@ -291,6 +385,11 @@ function App() {
     setCentre(null);
     setSupport(null);
     setError("");
+
+    setDelayMinutes(0);
+    setDelayResult(null);
+    setDelayError("");
+
     setStage("plan");
     setShowPostArrival(false);
     setShowExamComplete(false);
@@ -300,15 +399,21 @@ function App() {
 
   const risk = journey?.risk_level || "UNKNOWN";
 
-  const timeline = Array.isArray(support?.exam_day_timeline)
+  const timeline = Array.isArray(
+    support?.exam_day_timeline
+  )
     ? support.exam_day_timeline
     : [];
 
-  const warnings = Array.isArray(support?.warnings)
+  const warnings = Array.isArray(
+    support?.warnings
+  )
     ? support.warnings
     : [];
 
-  const checklist = Array.isArray(support?.preparation_checklist)
+  const checklist = Array.isArray(
+    support?.preparation_checklist
+  )
     ? support.preparation_checklist
     : [];
 
@@ -332,9 +437,13 @@ function App() {
         <div className="topbar-inner">
           <div className="brand">
             <div className="brand-icon">🎓</div>
+
             <div>
               <h1>Exam Journey Assistant</h1>
-              <p>Plan your journey. Reduce uncertainty. Reach on time.</p>
+              <p>
+                Plan your journey. Reduce uncertainty.
+                Reach on time.
+              </p>
             </div>
           </div>
 
@@ -347,15 +456,19 @@ function App() {
 
       <main className="page">
         <section className="hero">
-          <div className="hero-tag">SMART EXAM TRAVEL PLANNER</div>
+          <div className="hero-tag">
+            SMART EXAM TRAVEL PLANNER
+          </div>
 
           <h2>
-            From <span>Home</span> to <span>Exam</span> and Back.
+            From <span>Home</span> to <span>Exam</span> and
+            Back.
           </h2>
 
           <p>
-            A complete journey assistant that helps examination candidates
-            plan, monitor and complete their travel safely and on time.
+            A complete journey assistant that helps
+            examination candidates plan, monitor and
+            complete their travel safely and on time.
           </p>
 
           {journey && (
@@ -366,35 +479,46 @@ function App() {
                 ["arrive", "3", "Arrive"],
                 ["exam", "4", "Exam"],
                 ["home", "5", "Home"],
-              ].map(([key, number, label]) => (
-                <div
-                  className={`progress-step ${
-                    stage === key ? "active" : ""
-                  } ${
-                    ["travel", "arrive", "exam", "home"].includes(stage) &&
-                    key === "plan"
-                      ? "done"
-                      : ""
-                  }`}
-                  key={key}
-                >
-                  <span>{number}</span>
-                  <small>{label}</small>
-                </div>
-              ))}
+              ].map(
+                ([key, number, label]) => (
+                  <div
+                    className={`progress-step ${
+                      stage === key ? "active" : ""
+                    } ${
+                      [
+                        "travel",
+                        "arrive",
+                        "exam",
+                        "home",
+                      ].includes(stage) &&
+                      key === "plan"
+                        ? "done"
+                        : ""
+                    }`}
+                    key={key}
+                  >
+                    <span>{number}</span>
+                    <small>{label}</small>
+                  </div>
+                )
+              )}
             </div>
           )}
         </section>
 
         {!journey && (
-          <form className="card form-card" onSubmit={handleSubmit}>
+          <form
+            className="card form-card"
+            onSubmit={handleSubmit}
+          >
             <div className="card-heading">
               <div className="heading-icon">👤</div>
+
               <div>
                 <h3>Student &amp; Exam Details</h3>
                 <p>
-                  Provide the information required to create your personalized
-                  journey plan.
+                  Provide the information required to create
+                  your personalized journey plan.
                 </p>
               </div>
             </div>
@@ -402,9 +526,12 @@ function App() {
             <div className="form-grid">
               <div className="field">
                 <label>Student Name</label>
+
                 <input
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) =>
+                    setName(e.target.value)
+                  }
                   placeholder="Enter your name"
                   required
                 />
@@ -412,9 +539,12 @@ function App() {
 
               <div className="field">
                 <label>Exam Name</label>
+
                 <input
                   value={examName}
-                  onChange={(e) => setExamName(e.target.value)}
+                  onChange={(e) =>
+                    setExamName(e.target.value)
+                  }
                   placeholder="e.g. JEE, NEET, SSC"
                   required
                 />
@@ -422,39 +552,51 @@ function App() {
 
               <div className="field">
                 <label>Exam Date</label>
+
                 <input
                   type="date"
                   value={examDate}
-                  onChange={(e) => setExamDate(e.target.value)}
+                  onChange={(e) =>
+                    setExamDate(e.target.value)
+                  }
                   required
                 />
               </div>
 
               <div className="field">
                 <label>Reporting Time</label>
+
                 <input
                   type="time"
                   value={reportingTime}
-                  onChange={(e) => setReportingTime(e.target.value)}
+                  onChange={(e) =>
+                    setReportingTime(e.target.value)
+                  }
                   required
                 />
               </div>
 
               <div className="field">
                 <label>Gate Closing Time</label>
+
                 <input
                   type="time"
                   value={gateClosingTime}
-                  onChange={(e) => setGateClosingTime(e.target.value)}
+                  onChange={(e) =>
+                    setGateClosingTime(e.target.value)
+                  }
                   required
                 />
               </div>
 
               <div className="field">
                 <label>Exam City</label>
+
                 <input
                   value={city}
-                  onChange={(e) => setCity(e.target.value)}
+                  onChange={(e) =>
+                    setCity(e.target.value)
+                  }
                   placeholder="e.g. Gwalior"
                   required
                 />
@@ -462,9 +604,12 @@ function App() {
 
               <div className="field">
                 <label>Examination Centre</label>
+
                 <input
                   value={centreName}
-                  onChange={(e) => setCentreName(e.target.value)}
+                  onChange={(e) =>
+                    setCentreName(e.target.value)
+                  }
                   placeholder="Enter centre name"
                   required
                 />
@@ -472,9 +617,12 @@ function App() {
 
               <div className="field">
                 <label>Centre Address</label>
+
                 <input
                   value={centreAddress}
-                  onChange={(e) => setCentreAddress(e.target.value)}
+                  onChange={(e) =>
+                    setCentreAddress(e.target.value)
+                  }
                   placeholder="Enter complete centre address"
                   required
                 />
@@ -486,7 +634,11 @@ function App() {
                 <div className="location-input">
                   <input
                     value={currentLocation}
-                    onChange={(e) => setCurrentLocation(e.target.value)}
+                    onChange={(e) =>
+                      setCurrentLocation(
+                        e.target.value
+                      )
+                    }
                     placeholder="Enter starting location"
                     required
                   />
@@ -497,12 +649,17 @@ function App() {
                     onClick={captureGPS}
                     disabled={gpsLoading}
                   >
-                    📍 {gpsLoading ? "Locating..." : "Use GPS"}
+                    📍{" "}
+                    {gpsLoading
+                      ? "Locating..."
+                      : "Use GPS"}
                   </button>
                 </div>
 
                 {gpsStatus && (
-                  <div className="gps-status">{gpsStatus}</div>
+                  <div className="gps-status">
+                    {gpsStatus}
+                  </div>
                 )}
               </div>
 
@@ -514,20 +671,31 @@ function App() {
                     ["car", "🚗", "Car"],
                     ["bus", "🚌", "Bus"],
                     ["train", "🚆", "Train"],
-                  ].map(([value, icon, label]) => (
-                    <button
-                      type="button"
-                      key={value}
-                      className={`mode-card ${
-                        travelMode === value ? "selected" : ""
-                      }`}
-                      onClick={() => setTravelMode(value as TravelMode)}
-                    >
-                      <span>{icon}</span>
-                      <strong>{label}</strong>
-                      {travelMode === value && <small>Selected</small>}
-                    </button>
-                  ))}
+                  ].map(
+                    ([value, icon, label]) => (
+                      <button
+                        type="button"
+                        key={value}
+                        className={`mode-card ${
+                          travelMode === value
+                            ? "selected"
+                            : ""
+                        }`}
+                        onClick={() =>
+                          setTravelMode(
+                            value as TravelMode
+                          )
+                        }
+                      >
+                        <span>{icon}</span>
+                        <strong>{label}</strong>
+
+                        {travelMode === value && (
+                          <small>Selected</small>
+                        )}
+                      </button>
+                    )
+                  )}
                 </div>
               </div>
             </div>
@@ -538,7 +706,9 @@ function App() {
                 className="button button-primary"
                 disabled={loading}
               >
-                {loading ? "Planning Journey..." : "Plan My Journey →"}
+                {loading
+                  ? "Planning Journey..."
+                  : "Plan My Journey →"}
               </button>
             </div>
           </form>
@@ -547,10 +717,15 @@ function App() {
         {loading && (
           <div className="status loading-status">
             <div className="spinner"></div>
+
             <div>
-              <strong>Analysing your journey...</strong>
+              <strong>
+                Analysing your journey...
+              </strong>
+
               <span>
-                Calculating route, arrival buffer and journey risk.
+                Calculating route, arrival buffer and
+                journey risk.
               </span>
             </div>
           </div>
@@ -559,8 +734,12 @@ function App() {
         {error && !loading && (
           <div className="status error-status">
             <div>⚠️</div>
+
             <div>
-              <strong>Journey plan could not be generated</strong>
+              <strong>
+                Journey plan could not be generated
+              </strong>
+
               <span>{error}</span>
             </div>
           </div>
@@ -570,25 +749,45 @@ function App() {
           <section className="dashboard">
             <div className="dashboard-header">
               <div>
-                <span className="section-label">JOURNEY ANALYSIS</span>
+                <span className="section-label">
+                  JOURNEY ANALYSIS
+                </span>
+
                 <h2>Your Exam Journey Plan</h2>
+
                 <p>
-                  Prepared for <strong>{name}</strong> • {examName}
+                  Prepared for <strong>{name}</strong> •{" "}
+                  {examName}
                 </p>
               </div>
 
-              <div className="success-badge">✓ Plan Generated</div>
+              <div className="success-badge">
+                ✓ Plan Generated
+              </div>
             </div>
 
-            <div className={`card risk-banner ${getRiskClass(risk)}`}>
+            <div
+              className={`card risk-banner ${getRiskClass(
+                risk
+              )}`}
+            >
               <div className="risk-left">
                 <div className="risk-symbol">
-                  {String(risk).toUpperCase() === "LOW" ? "✓" : "!"}
+                  {String(risk).toUpperCase() ===
+                  "LOW"
+                    ? "✓"
+                    : "!"}
                 </div>
 
                 <div>
-                  <span>JOURNEY RISK LEVEL</span>
-                  <h3>{String(risk).toUpperCase()}</h3>
+                  <span>
+                    JOURNEY RISK LEVEL
+                  </span>
+
+                  <h3>
+                    {String(risk).toUpperCase()}
+                  </h3>
+
                   <p>
                     {support?.final_message ||
                       "Journey risk has been calculated from your travel plan."}
@@ -611,15 +810,22 @@ function App() {
               <div className="card stat-card">
                 <div className="stat-icon">⏱️</div>
                 <span>Travel Duration</span>
-                <strong>{formatMinutes(travelDuration)}</strong>
+
+                <strong>
+                  {formatMinutes(
+                    travelDuration
+                  )}
+                </strong>
               </div>
 
               <div className="card stat-card">
                 <div className="stat-icon">🛡️</div>
                 <span>Available Buffer</span>
+
                 <strong>
                   {formatMinutes(
-                    journey.buffer_minutes ?? journey.available_buffer
+                    journey.buffer_minutes ??
+                      journey.available_buffer
                   )}
                 </strong>
               </div>
@@ -627,18 +833,276 @@ function App() {
               <div className="card stat-card">
                 <div className="stat-icon">📍</div>
                 <span>Expected Arrival</span>
+
                 <strong>
-                  {formatDateTime(journey.expected_arrival)}
+                  {formatDateTime(
+                    journey.expected_arrival
+                  )}
                 </strong>
               </div>
             </div>
 
+            {/* =====================================================
+                DELAY SIMULATION
+            ====================================================== */}
+
+            <div
+              className="card"
+              style={{
+                marginTop: "20px",
+                padding: "24px",
+              }}
+            >
+              <div className="panel-heading">
+                <div className="panel-icon">⚠️</div>
+
+                <div>
+                  <h3>
+                    Journey Delay Simulation
+                  </h3>
+
+                  <p>
+                    Simulate unexpected traffic,
+                    transport or route delays and see
+                    how the journey risk changes.
+                  </p>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  marginTop: "18px",
+                  padding: "16px",
+                  borderRadius: "12px",
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                }}
+              >
+                <strong>
+                  Simulate a transportation delay
+                </strong>
+
+                <p
+                  style={{
+                    margin: "6px 0 16px",
+                    color: "#64748b",
+                  }}
+                >
+                  This demonstrates how the assistant
+                  reacts when real-world travel does not
+                  go according to plan.
+                </p>
+
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "10px",
+                  }}
+                >
+                  {[15, 30, 45, 60, 75, 90].map(
+                    (minutes) => (
+                      <button
+                        key={minutes}
+                        type="button"
+                        className="button button-secondary"
+                        onClick={() =>
+                          simulateDelay(minutes)
+                        }
+                        disabled={delayLoading}
+                      >
+                        +{minutes} min
+                      </button>
+                    )
+                  )}
+
+                  <button
+                    type="button"
+                    className="button button-primary"
+                    onClick={() =>
+                      simulateDelay(0)
+                    }
+                    disabled={delayLoading}
+                  >
+                    Reset
+                  </button>
+                </div>
+
+                {delayLoading && (
+                  <div
+                    style={{
+                      marginTop: "16px",
+                      fontWeight: 600,
+                    }}
+                  >
+                    🔄 Recalculating journey risk...
+                  </div>
+                )}
+
+                {delayError && (
+                  <div
+                    style={{
+                      marginTop: "16px",
+                      padding: "12px",
+                      borderRadius: "8px",
+                      background: "#fee2e2",
+                      color: "#991b1b",
+                    }}
+                  >
+                    ⚠️ {delayError}
+                  </div>
+                )}
+
+                {delayResult &&
+                  !delayLoading && (
+                    <div
+                      style={{
+                        marginTop: "20px",
+                        padding: "18px",
+                        borderRadius: "12px",
+                        border:
+                          "1px solid #cbd5e1",
+                        background: "#ffffff",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns:
+                            "repeat(auto-fit, minmax(160px, 1fr))",
+                          gap: "14px",
+                        }}
+                      >
+                        <div>
+                          <small>DELAY</small>
+
+                          <strong
+                            style={{
+                              display: "block",
+                              marginTop: "4px",
+                            }}
+                          >
+                            +
+                            {
+                              delayResult.delay_minutes
+                            }{" "}
+                            min
+                          </strong>
+                        </div>
+
+                        <div>
+                          <small>
+                            NEW EXPECTED ARRIVAL
+                          </small>
+
+                          <strong
+                            style={{
+                              display: "block",
+                              marginTop: "4px",
+                            }}
+                          >
+                            {formatDateTime(
+                              delayResult.new_expected_arrival
+                            )}
+                          </strong>
+                        </div>
+
+                        <div>
+                          <small>
+                            REMAINING BUFFER
+                          </small>
+
+                          <strong
+                            style={{
+                              display: "block",
+                              marginTop: "4px",
+                            }}
+                          >
+                            {formatMinutes(
+                              delayResult.buffer_minutes
+                            )}
+                          </strong>
+                        </div>
+
+                        <div>
+                          <small>
+                            UPDATED RISK
+                          </small>
+
+                          <strong
+                            className={getRiskClass(
+                              delayResult.risk_level
+                            )}
+                            style={{
+                              display: "block",
+                              marginTop: "4px",
+                            }}
+                          >
+                            {String(
+                              delayResult.risk_level
+                            ).toUpperCase()}
+                          </strong>
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: "16px",
+                          padding: "14px",
+                          borderRadius: "8px",
+                          background: "#f1f5f9",
+                        }}
+                      >
+                        <strong>
+                          Assistant Recommendation
+                        </strong>
+
+                        <p
+                          style={{
+                            marginBottom: 0,
+                          }}
+                        >
+                          {formatValue(
+                            delayResult.recommendation
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                {delayMinutes > 0 &&
+                  delayResult && (
+                    <div
+                      style={{
+                        marginTop: "14px",
+                        fontSize: "13px",
+                        color: "#64748b",
+                      }}
+                    >
+                      Simulation active: +
+                      {delayMinutes} minute
+                      transportation delay.
+                    </div>
+                  )}
+              </div>
+            </div>
+
+            {/* =====================================================
+                LIVE JOURNEY
+            ====================================================== */}
+
             <div className="live-card">
               <div className="live-top">
                 <div>
-                  <span className="section-label">LIVE JOURNEY</span>
-                  <h3>Your journey is ready to monitor</h3>
+                  <span className="section-label">
+                    LIVE JOURNEY
+                  </span>
+
+                  <h3>
+                    Your journey is ready to monitor
+                  </h3>
                 </div>
+
                 <span className="live-badge">
                   <i></i> LIVE READY
                 </span>
@@ -647,9 +1111,15 @@ function App() {
               <div className="route-visual">
                 <div className="route-point">
                   <span className="route-dot start"></span>
+
                   <div>
-                    <small>STARTING POINT</small>
-                    <strong>{currentLocation}</strong>
+                    <small>
+                      STARTING POINT
+                    </small>
+
+                    <strong>
+                      {currentLocation}
+                    </strong>
                   </div>
                 </div>
 
@@ -660,8 +1130,12 @@ function App() {
 
                 <div className="route-point">
                   <span className="route-dot destination"></span>
+
                   <div>
-                    <small>DESTINATION</small>
+                    <small>
+                      DESTINATION
+                    </small>
+
                     <strong>
                       {centreName}, {city}
                     </strong>
@@ -690,16 +1164,22 @@ function App() {
               <div className="card panel">
                 <div className="panel-heading">
                   <div className="panel-icon">🧭</div>
+
                   <div>
                     <h3>Journey Summary</h3>
-                    <p>Your planned route and examination schedule</p>
+                    <p>
+                      Your planned route and
+                      examination schedule
+                    </p>
                   </div>
                 </div>
 
                 <div className="details">
                   <div className="detail">
                     <span>Starting Point</span>
-                    <strong>{currentLocation}</strong>
+                    <strong>
+                      {currentLocation}
+                    </strong>
                   </div>
 
                   <div className="detail">
@@ -709,36 +1189,46 @@ function App() {
 
                   <div className="detail">
                     <span>Exam Centre</span>
+
                     <strong>
                       {formatValue(
-                        journey.exam_centre ?? centre?.centre_name ?? centreName
+                        journey.exam_centre ??
+                          centre?.centre_name ??
+                          centreName
                       )}
                     </strong>
                   </div>
 
                   <div className="detail">
                     <span>Exam Date</span>
+
                     <strong>
                       {formatValue(
-                        journey.exam_date ?? centre?.exam_date ?? examDate
+                        journey.exam_date ??
+                          centre?.exam_date ??
+                          examDate
                       )}
                     </strong>
                   </div>
 
                   <div className="detail">
                     <span>Reporting Time</span>
+
                     <strong>
                       {formatValue(
-                        centre?.reporting_time ?? reportingTime
+                        centre?.reporting_time ??
+                          reportingTime
                       )}
                     </strong>
                   </div>
 
                   <div className="detail">
                     <span>Gate Closing</span>
+
                     <strong>
                       {formatValue(
-                        centre?.gate_closing_time ?? gateClosingTime
+                        centre?.gate_closing_time ??
+                          gateClosingTime
                       )}
                     </strong>
                   </div>
@@ -748,21 +1238,32 @@ function App() {
               <div className="card panel">
                 <div className="panel-heading">
                   <div className="panel-icon">📍</div>
+
                   <div>
-                    <h3>Centre Information</h3>
-                    <p>Important examination centre details</p>
+                    <h3>
+                      Centre Information
+                    </h3>
+
+                    <p>
+                      Important examination centre
+                      details
+                    </p>
                   </div>
                 </div>
 
                 <div className="details">
                   <div className="detail">
                     <span>Centre</span>
-                    <strong>{centreName}</strong>
+                    <strong>
+                      {centreName}
+                    </strong>
                   </div>
 
                   <div className="detail">
                     <span>Address</span>
-                    <strong>{centreAddress}</strong>
+                    <strong>
+                      {centreAddress}
+                    </strong>
                   </div>
 
                   <div className="detail">
@@ -771,9 +1272,14 @@ function App() {
                   </div>
 
                   <div className="detail">
-                    <span>Recommended Arrival</span>
+                    <span>
+                      Recommended Arrival
+                    </span>
+
                     <strong className="highlight">
-                      {formatValue(support?.recommended_arrival_time)}
+                      {formatValue(
+                        support?.recommended_arrival_time
+                      )}
                     </strong>
                   </div>
                 </div>
@@ -781,13 +1287,20 @@ function App() {
             </div>
 
             <div className="ai-panel">
-              <div className="ai-panel-icon">🤖</div>
+              <div className="ai-panel-icon">
+                🤖
+              </div>
 
               <div>
-                <span>SMART JOURNEY INTELLIGENCE</span>
+                <span>
+                  SMART JOURNEY INTELLIGENCE
+                </span>
+
                 <h3>AI Recommendation</h3>
+
                 <p>
-                  {String(risk).toUpperCase() === "LOW"
+                  {String(risk).toUpperCase() ===
+                  "LOW"
                     ? "Your current journey has a comfortable safety buffer. The planned route is suitable for the examination schedule."
                     : "Your journey requires additional attention. Consider leaving earlier and keeping a reliable backup option ready."}
                 </p>
@@ -804,10 +1317,18 @@ function App() {
             <div className="journey-monitor card">
               <div className="panel-heading">
                 <div className="panel-icon">📡</div>
+
                 <div>
-                  <h3>Live Journey Monitoring</h3>
-                  <p>Monitor your current journey position</p>
+                  <h3>
+                    Live Journey Monitoring
+                  </h3>
+
+                  <p>
+                    Monitor your current journey
+                    position
+                  </p>
                 </div>
+
                 <span className="live-badge">
                   <i></i> LIVE
                 </span>
@@ -815,16 +1336,22 @@ function App() {
 
               <div className="monitor-grid">
                 <div>
-                  <small>CURRENT LOCATION</small>
+                  <small>
+                    CURRENT LOCATION
+                  </small>
+
                   <strong>
                     {lastGps
-                      ? `${lastGps.lat.toFixed(5)}, ${lastGps.lng.toFixed(5)}`
+                      ? `${lastGps.lat.toFixed(
+                          5
+                        )}, ${lastGps.lng.toFixed(5)}`
                       : currentLocation}
                   </strong>
                 </div>
 
                 <div>
                   <small>DESTINATION</small>
+
                   <strong>
                     {centreName}, {city}
                   </strong>
@@ -832,6 +1359,7 @@ function App() {
 
                 <div>
                   <small>TRAVEL MODE</small>
+
                   <strong>{modeLabel}</strong>
                 </div>
               </div>
@@ -863,11 +1391,16 @@ function App() {
             {stage === "travel" && (
               <div className="journey-alert">
                 <span>📡</span>
+
                 <div>
-                  <strong>Journey monitoring active</strong>
+                  <strong>
+                    Journey monitoring active
+                  </strong>
+
                   <p>
-                    Your journey is now in travel mode. Keep location access
-                    enabled and follow the navigation route.
+                    Your journey is now in travel mode.
+                    Keep location access enabled and
+                    follow the navigation route.
                   </p>
                 </div>
               </div>
@@ -875,34 +1408,46 @@ function App() {
 
             {showPostArrival && (
               <div className="arrival-card">
-                <div className="arrival-icon">🎉</div>
+                <div className="arrival-icon">
+                  🎉
+                </div>
 
-                <span className="section-label">DESTINATION REACHED</span>
+                <span className="section-label">
+                  DESTINATION REACHED
+                </span>
 
                 <h2>Journey Successful</h2>
 
                 <p>
-                  You have reached the examination area. What would you like
-                  to do next?
+                  You have reached the examination area.
+                  What would you like to do next?
                 </p>
 
                 <div className="service-grid">
                   <button className="service-card">
                     <span>🏨</span>
                     <strong>Find Stay</strong>
-                    <small>Hotels & accommodation</small>
+                    <small>
+                      Hotels & accommodation
+                    </small>
                   </button>
 
                   <button className="service-card">
                     <span>🍽️</span>
-                    <strong>Food & Breakfast</strong>
-                    <small>Nearby food options</small>
+                    <strong>
+                      Food & Breakfast
+                    </strong>
+                    <small>
+                      Nearby food options
+                    </small>
                   </button>
 
                   <button className="service-card">
                     <span>🚕</span>
                     <strong>Local Cab</strong>
-                    <small>Reach nearby locations</small>
+                    <small>
+                      Reach nearby locations
+                    </small>
                   </button>
 
                   <button
@@ -910,14 +1455,19 @@ function App() {
                     onClick={openExamStatus}
                   >
                     <span>📝</span>
-                    <strong>Continue to Exam</strong>
-                    <small>Mark your exam status</small>
+                    <strong>
+                      Continue to Exam
+                    </strong>
+                    <small>
+                      Mark your exam status
+                    </small>
                   </button>
                 </div>
 
                 <div className="prototype-label">
-                  Prototype services are designed for future authorized
-                  hotel, food and mobility integrations.
+                  Prototype services are designed for
+                  future authorized hotel, food and
+                  mobility integrations.
                 </div>
               </div>
             )}
@@ -925,25 +1475,39 @@ function App() {
             {showExamComplete && (
               <div className="modal-backdrop">
                 <div className="modal-card">
-                  <div className="modal-icon">📝</div>
-                  <span className="section-label">EXAM STATUS</span>
-                  <h2>How did your examination go?</h2>
+                  <div className="modal-icon">
+                    📝
+                  </div>
+
+                  <span className="section-label">
+                    EXAM STATUS
+                  </span>
+
+                  <h2>
+                    How did your examination go?
+                  </h2>
+
                   <p>
-                    Your response helps us complete your journey and prepare
-                    your return trip.
+                    Your response helps us complete
+                    your journey and prepare your
+                    return trip.
                   </p>
 
                   <div className="exam-buttons">
                     <button
                       className="button button-success"
-                      onClick={() => completeExam(true)}
+                      onClick={() =>
+                        completeExam(true)
+                      }
                     >
                       ✓ Exam Successful
                     </button>
 
                     <button
                       className="button button-secondary"
-                      onClick={() => completeExam(false)}
+                      onClick={() =>
+                        completeExam(false)
+                      }
                     >
                       Submit Feedback
                     </button>
@@ -958,7 +1522,9 @@ function App() {
                   {examSuccessful ? "🎉" : "💬"}
                 </div>
 
-                <span className="section-label">EXAM COMPLETED</span>
+                <span className="section-label">
+                  EXAM COMPLETED
+                </span>
 
                 <h2>
                   {examSuccessful
@@ -981,97 +1547,147 @@ function App() {
               </div>
             )}
 
-            {stage === "home" && returnJourney && (
-              <div className="return-card">
-                <div className="return-header">
-                  <div>
-                    <span className="section-label">RETURN JOURNEY</span>
-                    <h2>Plan Your Journey Home</h2>
-                    <p>
-                      Your exam is complete. We can now help you plan the
-                      journey back home.
-                    </p>
-                  </div>
-
-                  <div className="home-icon">🏠</div>
-                </div>
-
-                <div className="return-route">
-                  <div>
-                    <small>FROM</small>
-                    <strong>{city}</strong>
-                  </div>
-
-                  <span>→</span>
-
-                  <div>
-                    <small>TO</small>
-                    <strong>{currentLocation}</strong>
-                  </div>
-                </div>
-
-                <div className="return-options">
-                  <div className="return-option">
-                    <span>🚆</span>
+            {stage === "home" &&
+              returnJourney && (
+                <div className="return-card">
+                  <div className="return-header">
                     <div>
-                      <strong>Train</strong>
-                      <small>Check available return connections</small>
+                      <span className="section-label">
+                        RETURN JOURNEY
+                      </span>
+
+                      <h2>
+                        Plan Your Journey Home
+                      </h2>
+
+                      <p>
+                        Your exam is complete. We can
+                        now help you plan the journey
+                        back home.
+                      </p>
+                    </div>
+
+                    <div className="home-icon">
+                      🏠
                     </div>
                   </div>
 
-                  <div className="return-option">
-                    <span>🚌</span>
+                  <div className="return-route">
                     <div>
-                      <strong>Bus</strong>
-                      <small>Explore return bus options</small>
+                      <small>FROM</small>
+                      <strong>{city}</strong>
+                    </div>
+
+                    <span>→</span>
+
+                    <div>
+                      <small>TO</small>
+
+                      <strong>
+                        {currentLocation}
+                      </strong>
                     </div>
                   </div>
 
-                  <div className="return-option">
-                    <span>🚕</span>
-                    <div>
-                      <strong>Local Cab</strong>
-                      <small>Reach station or bus stand</small>
+                  <div className="return-options">
+                    <div className="return-option">
+                      <span>🚆</span>
+
+                      <div>
+                        <strong>Train</strong>
+
+                        <small>
+                          Check available return
+                          connections
+                        </small>
+                      </div>
+                    </div>
+
+                    <div className="return-option">
+                      <span>🚌</span>
+
+                      <div>
+                        <strong>Bus</strong>
+
+                        <small>
+                          Explore return bus
+                          options
+                        </small>
+                      </div>
+                    </div>
+
+                    <div className="return-option">
+                      <span>🚕</span>
+
+                      <div>
+                        <strong>Local Cab</strong>
+
+                        <small>
+                          Reach station or bus stand
+                        </small>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="parent-status">
-                  <div className="parent-status-icon">👨‍👩‍👦</div>
-                  <div>
-                    <strong>Parent Journey Updates</strong>
-                    <p>
-                      Future version can securely share important journey
-                      milestones such as departure, arrival and exam
-                      completion with authorized contacts.
-                    </p>
+                  <div className="parent-status">
+                    <div className="parent-status-icon">
+                      👨‍👩‍👦
+                    </div>
+
+                    <div>
+                      <strong>
+                        Parent Journey Updates
+                      </strong>
+
+                      <p>
+                        Future version can securely
+                        share important journey
+                        milestones such as departure,
+                        arrival and exam completion
+                        with authorized contacts.
+                      </p>
+                    </div>
+
+                    <span className="planned-badge">
+                      PLANNED
+                    </span>
                   </div>
-                  <span className="planned-badge">PLANNED</span>
-                </div>
 
-                <button
-                  className="button button-primary"
-                  onClick={() =>
-                    alert("Return journey planning module is ready for integration.")
-                  }
-                >
-                  🚀 Start Return Planning
-                </button>
-              </div>
-            )}
+                  <button
+                    className="button button-primary"
+                    onClick={() =>
+                      alert(
+                        "Return journey planning module is ready for integration."
+                      )
+                    }
+                  >
+                    🚀 Start Return Planning
+                  </button>
+                </div>
+              )}
 
             <div className="content-grid">
               <div className="card panel">
                 <div className="panel-heading">
-                  <div className="panel-icon">💡</div>
+                  <div className="panel-icon">
+                    💡
+                  </div>
+
                   <div>
-                    <h3>Recommendation</h3>
-                    <p>What you should do before travelling</p>
+                    <h3>
+                      Recommendation
+                    </h3>
+
+                    <p>
+                      What you should do before
+                      travelling
+                    </p>
                   </div>
                 </div>
 
                 <div className="recommendation">
                   <div>✓</div>
+
                   <p>
                     {formatValue(
                       support?.final_message ||
@@ -1082,36 +1698,69 @@ function App() {
 
                 {support?.delay_action && (
                   <div className="action-box">
-                    <strong>If a delay occurs</strong>
-                    <p>{formatValue(support.delay_action)}</p>
+                    <strong>
+                      If a delay occurs
+                    </strong>
+
+                    <p>
+                      {formatValue(
+                        support.delay_action
+                      )}
+                    </p>
                   </div>
                 )}
 
                 {support?.backup_guidance && (
                   <div className="action-box">
-                    <strong>Backup guidance</strong>
-                    <p>{formatValue(support.backup_guidance)}</p>
+                    <strong>
+                      Backup guidance
+                    </strong>
+
+                    <p>
+                      {formatValue(
+                        support.backup_guidance
+                      )}
+                    </p>
                   </div>
                 )}
               </div>
 
               <div className="card panel">
                 <div className="panel-heading">
-                  <div className="panel-icon">⚠️</div>
+                  <div className="panel-icon">
+                    ⚠️
+                  </div>
+
                   <div>
                     <h3>Warnings</h3>
-                    <p>Things you should keep in mind</p>
+
+                    <p>
+                      Things you should keep in mind
+                    </p>
                   </div>
                 </div>
 
                 <div className="warning-list">
                   {warnings.length > 0 ? (
-                    warnings.map((warning: any, index: number) => (
-                      <div className="warning-item" key={index}>
-                        <span>!</span>
-                        <p>{formatValue(warning)}</p>
-                      </div>
-                    ))
+                    warnings.map(
+                      (
+                        warning: any,
+                        index: number
+                      ) => (
+                        <div
+                          className="warning-item"
+                          key={index}
+                        >
+                          <span>!</span>
+
+                          <p>
+                            {formatValue(
+                              warning
+                            )}
+                          </p>
+                        </div>
+                      )
+                    )
                   ) : (
                     <div className="empty-state">
                       No additional warnings.
@@ -1124,69 +1773,133 @@ function App() {
             <div className="content-grid">
               <div className="card panel">
                 <div className="panel-heading">
-                  <div className="panel-icon">📝</div>
+                  <div className="panel-icon">
+                    📝
+                  </div>
+
                   <div>
-                    <h3>Exam-Day Checklist</h3>
-                    <p>Prepare these items before leaving</p>
+                    <h3>
+                      Exam-Day Checklist
+                    </h3>
+
+                    <p>
+                      Prepare these items before
+                      leaving
+                    </p>
                   </div>
                 </div>
 
                 <div className="checklist">
-                  {checklist.map((item: any, index: number) => (
-                    <div className="check-item" key={index}>
-                      <div className="check-box">✓</div>
-                      <span>{formatValue(item)}</span>
-                    </div>
-                  ))}
+                  {checklist.map(
+                    (
+                      item: any,
+                      index: number
+                    ) => (
+                      <div
+                        className="check-item"
+                        key={index}
+                      >
+                        <div className="check-box">
+                          ✓
+                        </div>
+
+                        <span>
+                          {formatValue(item)}
+                        </span>
+                      </div>
+                    )
+                  )}
                 </div>
               </div>
 
               <div className="card panel">
                 <div className="panel-heading">
-                  <div className="panel-icon">🕐</div>
+                  <div className="panel-icon">
+                    🕐
+                  </div>
+
                   <div>
-                    <h3>Journey Timeline</h3>
-                    <p>Important events for your exam journey</p>
+                    <h3>
+                      Journey Timeline
+                    </h3>
+
+                    <p>
+                      Important events for your
+                      exam journey
+                    </p>
                   </div>
                 </div>
 
                 <div className="timeline">
                   {timeline.length > 0 ? (
-                    timeline.map((item: any, index: number) => (
-                      <div className="timeline-item" key={index}>
-                        <div className="timeline-dot">{index + 1}</div>
-                        <strong>{formatValue(item)}</strong>
-                      </div>
-                    ))
+                    timeline.map(
+                      (
+                        item: any,
+                        index: number
+                      ) => (
+                        <div
+                          className="timeline-item"
+                          key={index}
+                        >
+                          <div className="timeline-dot">
+                            {index + 1}
+                          </div>
+
+                          <strong>
+                            {formatValue(item)}
+                          </strong>
+                        </div>
+                      )
+                    )
                   ) : (
                     <>
                       <div className="timeline-item">
-                        <div className="timeline-dot">1</div>
+                        <div className="timeline-dot">
+                          1
+                        </div>
+
                         <strong>
-                          {formatDateTime(journey.departure_time)} - Planned
-                          departure
+                          {formatDateTime(
+                            journey.departure_time
+                          )}{" "}
+                          - Planned departure
                         </strong>
                       </div>
 
                       <div className="timeline-item">
-                        <div className="timeline-dot">2</div>
+                        <div className="timeline-dot">
+                          2
+                        </div>
+
                         <strong>
-                          {formatDateTime(journey.expected_arrival)} -
-                          Expected arrival
+                          {formatDateTime(
+                            journey.expected_arrival
+                          )}{" "}
+                          - Expected arrival
                         </strong>
                       </div>
 
                       <div className="timeline-item">
-                        <div className="timeline-dot">3</div>
+                        <div className="timeline-dot">
+                          3
+                        </div>
+
                         <strong>
-                          {examDate} {reportingTime} - Official reporting
+                          {examDate}{" "}
+                          {reportingTime} -
+                          Official reporting
                         </strong>
                       </div>
 
                       <div className="timeline-item">
-                        <div className="timeline-dot">4</div>
+                        <div className="timeline-dot">
+                          4
+                        </div>
+
                         <strong>
-                          {examDate} {gateClosingTime} - Gate closing
+                          {examDate}{" "}
+                          {gateClosingTime} -
+                          Gate closing
                         </strong>
                       </div>
                     </>
@@ -1198,42 +1911,59 @@ function App() {
             <div className="future-features">
               <div>
                 <span>🚆</span>
-                <strong>Railway Intelligence</strong>
+
+                <strong>
+                  Railway Intelligence
+                </strong>
+
                 <small>
-                  Train number, live running status and ETA via authorized
-                  railway data services.
+                  Train number, live running status
+                  and ETA via authorized railway
+                  data services.
                 </small>
               </div>
 
               <div>
                 <span>🏨</span>
+
                 <strong>Stay & Food</strong>
+
                 <small>
-                  Accommodation and food discovery around the destination.
+                  Accommodation and food discovery
+                  around the destination.
                 </small>
               </div>
 
               <div>
                 <span>👨‍👩‍👦</span>
+
                 <strong>Family Updates</strong>
+
                 <small>
-                  Secure milestone notifications for authorized contacts.
+                  Secure milestone notifications
+                  for authorized contacts.
                 </small>
               </div>
             </div>
 
             <div className="prototype-note">
               <span>ℹ️</span>
+
               <p>
-                This SIH prototype demonstrates the complete student journey
-                experience. Google Maps navigation and browser GPS are
-                available now. Railway live status, hotel, food, cab booking
-                and family notifications require their respective authorized
-                APIs and production services.
+                This SIH prototype demonstrates the
+                complete student journey experience.
+                Google Maps navigation and browser GPS
+                are available now. Railway live status,
+                hotel, food, cab booking and family
+                notifications require their respective
+                authorized APIs and production services.
               </p>
             </div>
 
-            <button className="reset-link" onClick={resetAll}>
+            <button
+              className="reset-link"
+              onClick={resetAll}
+            >
               ← Create another journey
             </button>
           </section>
@@ -1242,8 +1972,8 @@ function App() {
 
       <footer className="footer">
         <p>
-          Exam Journey Assistant • Smart Travel Planning for Examination
-          Candidates
+          Exam Journey Assistant • Smart Travel
+          Planning for Examination Candidates
         </p>
       </footer>
     </div>
