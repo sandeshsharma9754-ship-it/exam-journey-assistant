@@ -247,7 +247,36 @@ function App() {
     setDelayLoading(true);
     setDelayError("");
 
+    // Reset button
+    if (minutes === 0) {
+      setDelayMinutes(0);
+      setDelayResult(null);
+      setDelayLoading(false);
+      return;
+    }
+
     try {
+      /*
+       * Backend expects:
+       * YYYY-MM-DD HH:MM
+       *
+       * The API may return:
+       * YYYY-MM-DDTHH:MM:SS
+       * YYYY-MM-DD HH:MM:SS
+       * YYYY-MM-DDTHH:MM
+       * YYYY-MM-DD HH:MM
+       *
+       * So we normalize everything to:
+       * YYYY-MM-DD HH:MM
+       */
+      const rawArrival = String(
+        journey.expected_arrival
+      );
+
+      const normalizedArrival = rawArrival
+        .replace("T", " ")
+        .slice(0, 16);
+
       const response = await fetch(
         `${API_BASE}/journey/simulate-delay`,
         {
@@ -256,9 +285,7 @@ function App() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            expected_arrival: String(
-              journey.expected_arrival
-            ).replace("T", " "),
+            expected_arrival: normalizedArrival,
             exam_date: examDate,
             reporting_time: reportingTime,
             gate_closing_time: gateClosingTime,
@@ -389,6 +416,7 @@ function App() {
     setDelayMinutes(0);
     setDelayResult(null);
     setDelayError("");
+    setDelayLoading(false);
 
     setStage("plan");
     setShowPostArrival(false);
@@ -987,6 +1015,23 @@ function App() {
                               delayResult.delay_minutes
                             }{" "}
                             min
+                          </strong>
+                        </div>
+
+                        <div>
+                          <small>
+                            ORIGINAL ARRIVAL
+                          </small>
+
+                          <strong
+                            style={{
+                              display: "block",
+                              marginTop: "4px",
+                            }}
+                          >
+                            {formatDateTime(
+                              delayResult.original_arrival
+                            )}
                           </strong>
                         </div>
 
