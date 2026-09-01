@@ -3,6 +3,14 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from datetime import datetime
+
+from backend.services.journey.risk_engine import (
+    simulate_delay,
+)
+from backend.services.journey.time_utils import (
+    parse_datetime,
+)
 
 from backend.services.journey.journey_service import (
     create_complete_journey_plan,
@@ -714,3 +722,95 @@ def complete_exam_plan(
             "student_support": student_support,
         },
     }
+# ============================================================
+# JOURNEY DELAY SIMULATION
+# ============================================================
+
+class DelaySimulationRequest(BaseModel):
+
+    expected_arrival: str
+
+    exam_date: str
+
+    reporting_time: str
+
+    gate_closing_time: str
+
+    delay_minutes: int = Field(
+        ...,
+        ge=0,
+        le=300,
+    )
+
+
+@app.post("/journey/simulate-delay")
+def simulate_journey_delay(
+    request: DelaySimulationRequest,
+):
+
+    try:
+
+        expected_arrival = datetime.strptime(
+            request.expected_arrival,
+            "%Y-%m-%d %H:%M",
+        )
+
+        reporting_datetime = parse_datetime(
+            request.exam_date,
+            request.reporting_time,
+        )
+
+        gate_closing_datetime = parse_datetime(
+            request.exam_date,
+            request.gate_closing_time,
+        )
+
+        (
+            new_expected_arrival,
+            new_buffer,
+            risk_level,
+            recommendation,
+        ) = simulate_delay(
+            expected_arrival=expected_arrival,
+            reporting_datetime=reporting_datetime,
+            gate_closing_datetime=gate_closing_datetime,
+            delay_minutes=request.delay_minutes,
+        )
+
+        return {
+            "success": True,
+
+            "delay_minutes": request.delay_minutes,
+
+            "original_arrival": (
+                expected_arrival.strftime(
+                    "%Y-%m-%d %H:%M"
+                )
+            ),
+
+            "new_expected_arrival": (
+                new_expected_arrival.strftime(
+                    "%Y-%m-%d %H:%M"
+                )
+            ),
+
+            "buffer_minutes": new_buffer,
+
+            "risk_level": risk_level,
+
+            "recommendation": recommendation,
+        }
+
+    except ValueError as exc:
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+    except Exception as exc:
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to simulate journey delay.",
+        ) from exc

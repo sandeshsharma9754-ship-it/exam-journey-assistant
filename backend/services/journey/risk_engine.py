@@ -113,3 +113,39 @@ def determine_risk(
         "LOW",
         "The journey has sufficient buffer before reporting time."
     )
+def simulate_delay(
+    expected_arrival: datetime,
+    reporting_datetime: datetime,
+    gate_closing_datetime: datetime,
+    delay_minutes: int
+) -> tuple[datetime, int, str, str]:
+
+    # Delay ke baad naya arrival time
+    new_expected_arrival = add_minutes(
+        expected_arrival,
+        delay_minutes
+    )
+
+    # New buffers calculate karo
+    new_reporting_buffer = calculate_buffer(
+        new_expected_arrival,
+        reporting_datetime
+    )
+
+    new_gate_buffer = calculate_buffer(
+        new_expected_arrival,
+        gate_closing_datetime
+    )
+
+    # Existing risk engine ko reuse karo
+    risk_level, recommendation = determine_risk(
+        new_reporting_buffer,
+        new_gate_buffer
+    )
+
+    return (
+        new_expected_arrival,
+        new_reporting_buffer,
+        risk_level,
+        recommendation
+    )
